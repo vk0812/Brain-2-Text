@@ -86,3 +86,12 @@ fMRI = big machine that costs a ton.
 
 EEG = wearable device.
 
+### GLM beta estimates
+
+Relative weights of different predictors in modeling the brain's response to stimuli.
+
+Help quantify how strongly each modeled effect contributes to the measured brain activity over time.
+
+How much of the stimuli can we attribute to this image.
+
+The answer requires fitting a statistical model to the time series.
