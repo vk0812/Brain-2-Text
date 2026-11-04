@@ -1,0 +1,12 @@
+# Downloaded datasets
+/data/
+
+# Generated outputs
+/outputs/
+*.nii
+*.nii.gz
+*.npy
+*.npz
+
+# Notebook temporary files
+.ipynb_checkpoints/
