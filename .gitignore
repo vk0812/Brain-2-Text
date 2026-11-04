@@ -10,3 +10,14 @@
 
 # Notebook temporary files
 .ipynb_checkpoints/
+
+# Python env
+.venv/
+__pycache__/
+*.py[cod]
+
+# Jupyter config
+.jupyter/
+
+# MACOS
+.DS_Store
