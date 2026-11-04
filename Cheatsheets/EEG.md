@@ -8,4 +8,4 @@ Millions of neurons firing at the same time = group of people clapping in a stad
 
 **EEG signals:**
 
-![eeg_signals_table](assets/eeg_signal_table.png)
+![eeg_signals_table](assets/eeg_signals_table.png)
