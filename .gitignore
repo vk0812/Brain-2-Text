@@ -19,5 +19,9 @@ __pycache__/
 # Jupyter config
 .jupyter/
 
+# Local planning
+/PLAN.md
+
 # MACOS
 .DS_Store
+.idea
