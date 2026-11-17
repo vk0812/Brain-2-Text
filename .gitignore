@@ -1,17 +1,18 @@
-# Downloaded datasets
-/data/
+
+# Ignore all data except processed embeddings
+/data/*
+!/data/processed/
+/data/processed/*
+!/data/processed/embeddings/
+!/data/processed/embeddings/**
 
 # Generated outputs
 /outputs/
-*.nii
-*.nii.gz
-*.npy
-*.npz
 
 # Notebook temporary files
 .ipynb_checkpoints/
 
-# Python env
+# Python environment
 .venv/
 __pycache__/
 *.py[cod]
@@ -19,5 +20,11 @@ __pycache__/
 # Jupyter config
 .jupyter/
 
-# MACOS
+# Local planning
+/PLAN.md
+
+# macOS
 .DS_Store
+
+# IDE
+.idea/
