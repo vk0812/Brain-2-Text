@@ -1,0 +1,25 @@
+# Downloaded datasets
+/data/
+
+# Generated outputs
+/outputs/
+*.nii
+*.nii.gz
+*.npy
+*.npz
+
+# Notebook temporary files
+.ipynb_checkpoints/
+
+# Python env
+.venv/
+__pycache__/
+*.py[cod]
+
+# Jupyter config
+.jupyter/
+
+# MACOS
+.DS_Store
+.idea
+
