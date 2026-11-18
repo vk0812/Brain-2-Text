@@ -1,13 +1,16 @@
+# Generated outputs and large data files
+/outputs/
+*.nii
+*.nii.gz
+*.npy
+*.npz
 
-# Ignore all data except processed embeddings
+# Downloaded datasets: keep processed embeddings in Git
 /data/*
-!/data/processed/
 /data/processed/*
+!/data/processed/
 !/data/processed/embeddings/
 !/data/processed/embeddings/**
-
-# Generated outputs
-/outputs/
 
 # Notebook temporary files
 .ipynb_checkpoints/
@@ -27,4 +30,4 @@ __pycache__/
 .DS_Store
 
 # IDE
-.idea/
+.idea
