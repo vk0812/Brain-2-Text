@@ -1,17 +1,21 @@
-# Downloaded datasets
-/data/
-
-# Generated outputs
+# Generated outputs and large data files
 /outputs/
 *.nii
 *.nii.gz
 *.npy
 *.npz
 
+# Downloaded datasets: keep processed embeddings in Git
+/data/*
+/data/processed/*
+!/data/processed/
+!/data/processed/embeddings/
+!/data/processed/embeddings/**
+
 # Notebook temporary files
 .ipynb_checkpoints/
 
-# Python env
+# Python environment
 .venv/
 __pycache__/
 *.py[cod]
@@ -22,6 +26,8 @@ __pycache__/
 # Local planning
 /PLAN.md
 
-# MACOS
+# macOS
 .DS_Store
+
+# IDE
 .idea
