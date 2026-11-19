@@ -174,29 +174,41 @@ Test-set retrieval, mean ± std over 5 seeds. Chance for a 492-image gallery: Re
 | Subject | Embedding | Model | Recall@1 (%) | Recall@5 (%) | Median rank |
 | --- | --- | --- | --- | --- | --- |
 | CSI1 | clip_vit_b32 | ridge | 2.5 ± 0.7 | 8.2 ± 1.4 | 59 ± 4 |
-| CSI1 | clip_vit_b32 | mlp | 2.6 ± 0.4 | **10.0 ± 0.7** | **47 ± 5** |
+| CSI1 | clip_vit_b32 | mlp | 2.6 ± 0.4 | 10.0 ± 0.7 | 47 ± 5 |
+| CSI1 | clip_vit_b32 | mlp_infonce | **7.2 ± 1.5** | **23.7 ± 1.4** | **19 ± 1** |
 | CSI1 | dinov2_large | ridge | 1.2 ± 0.4 | 6.3 ± 0.8 | 81 ± 5 |
 | CSI1 | dinov2_large | mlp | 1.7 ± 0.7 | 7.0 ± 1.2 | 69 ± 5 |
+| CSI1 | dinov2_large | mlp_infonce | 2.3 ± 0.7 | 11.0 ± 1.5 | 49 ± 3 |
 | CSI2 | clip_vit_b32 | ridge | 1.1 ± 0.5 | 5.8 ± 1.3 | 86 ± 4 |
 | CSI2 | clip_vit_b32 | mlp | 2.0 ± 0.5 | 7.3 ± 0.8 | 73 ± 5 |
+| CSI2 | clip_vit_b32 | mlp_infonce | **3.2 ± 0.2** | **12.2 ± 1.1** | **39 ± 2** |
 | CSI2 | dinov2_large | ridge | 1.0 ± 0.2 | 4.1 ± 0.8 | 108 ± 2 |
 | CSI2 | dinov2_large | mlp | 1.3 ± 0.2 | 5.0 ± 0.9 | 92 ± 6 |
+| CSI2 | dinov2_large | mlp_infonce | 2.0 ± 0.5 | 7.6 ± 0.8 | 67 ± 5 |
 | CSI3 | clip_vit_b32 | ridge | 1.7 ± 0.3 | 6.9 ± 0.7 | 77 ± 5 |
 | CSI3 | clip_vit_b32 | mlp | 2.0 ± 0.5 | 8.3 ± 1.5 | 66 ± 6 |
+| CSI3 | clip_vit_b32 | mlp_infonce | **5.1 ± 1.5** | **17.3 ± 2.0** | **30 ± 4** |
 | CSI3 | dinov2_large | ridge | 1.2 ± 0.3 | 4.1 ± 0.6 | 94 ± 6 |
 | CSI3 | dinov2_large | mlp | 1.3 ± 0.6 | 4.9 ± 0.8 | 87 ± 7 |
+| CSI3 | dinov2_large | mlp_infonce | 2.0 ± 0.3 | 7.6 ± 0.7 | 63 ± 5 |
 | CSI4 | clip_vit_b32 | ridge | 2.9 ± 0.8 | 11.5 ± 2.1 | 41 ± 3 |
-| CSI4 | clip_vit_b32 | mlp | **3.7 ± 0.6** | **13.4 ± 1.6** | **37 ± 2** |
+| CSI4 | clip_vit_b32 | mlp | 3.7 ± 0.6 | 13.4 ± 1.6 | 37 ± 2 |
+| CSI4 | clip_vit_b32 | mlp_infonce | **7.0 ± 0.9** | **23.8 ± 2.2** | **18 ± 1** |
 | CSI4 | dinov2_large | ridge | 1.8 ± 0.6 | 7.2 ± 1.8 | 54 ± 5 |
 | CSI4 | dinov2_large | mlp | 1.5 ± 0.7 | 7.3 ± 1.4 | 50 ± 3 |
+| CSI4 | dinov2_large | mlp_infonce | 2.4 ± 0.8 | 11.1 ± 1.5 | 40 ± 6 |
 
 Observations:
 
-- Every configuration is well above chance (median rank 37–108 vs. 148–246).
-- **MLP vs. ridge.** The MLP has a better median rank in all 8 subject × embedding settings (by 4–16 ranks) and a better or equal Recall@5 everywhere. Recall@1 differences are mostly within one standard deviation. So a nonlinear mapping helps, but modestly.
-- **CLIP vs. DINOv2.** CLIP embeddings are easier to predict than DINOv2-Large ones for all four subjects and both models. The two encoders differ in size and dimension (512 vs. 1024) as well as in training objective, so this is not yet a clean comparison of objectives.
-- **Subjects.** CSI1 decodes best among CSI1–3; CSI2 (fewest ROI voxels: 1228, and the weakest repeat correlation) decodes worst. CSI4 is not comparable because of its smaller gallery.
-- **MLP hyperparameters.** The selected weight decay varies across seeds without a pattern, so it matters little in the tested range. DINOv2 runs stop after 5–10 epochs (fast overfitting); CLIP runs select 15–60 epochs, and 2 of 20 hit the 60-epoch limit.
+- Every configuration is well above chance (median rank 18–108 vs. 148–246).
+- **Contrastive loss is the largest improvement so far.** `mlp_infonce` beats the cosine-loss `mlp` on every metric in all 8 subject × embedding settings, well beyond one standard deviation. With CLIP, median rank roughly halves (CSI1: 47 → 19, CSI2: 73 → 39, CSI3: 66 → 30, CSI4: 37 → 18) and Recall@5 rises 1.7–2.4×. The cosine loss only pulls each prediction towards its target; InfoNCE explicitly ranks the correct image above the other images in the batch, which is what retrieval measures.
+- **MLP vs. ridge (both regression losses).** The cosine MLP has a better median rank than ridge in all 8 settings (by 4–16 ranks); Recall@1 differences are mostly within one standard deviation. A nonlinear mapping alone helps only modestly.
+- **CLIP vs. DINOv2.** CLIP embeddings are easier to predict than DINOv2-Large ones for all subjects and models, and the gap widens with the contrastive loss (CSI1 median rank 19 vs. 49). The two encoders differ in size and dimension (512 vs. 1024) as well as in training objective, so this is not yet a clean comparison of objectives.
+- **Subjects.** Among CSI1–3, CSI1 decodes best and CSI2 (fewest ROI voxels: 1228, weakest repeat correlation) worst. CSI4 is not comparable because of its smaller gallery.
+- **Hyperparameters.**
+  - Cosine MLP: the selected weight decay varies without a pattern.
+  - InfoNCE MLP: CLIP mostly selects τ = 0.03, DINOv2 mostly τ = 0.1.
+  - **34 of 40 InfoNCE runs select 5 epochs, the earliest checkpoint**, so the best stopping point may be earlier. Checking every epoch (or lowering the learning rate) is a cheap next experiment.
 - Most test queries are single presentations (≈ 4800 of 4916 images are shown once), so these numbers reflect single-trial decoding.
 
 ## Project Goals and Plans
