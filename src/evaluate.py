@@ -21,12 +21,19 @@ def retrieval_ranks(predicted, gallery, target_index):
 
 
 def retrieval_metrics(ranks, gallery_size):
+    # 2-way identification: the fraction of wrong candidates scored below the
+    # correct one, averaged over queries (0.5 = chance, 1 = perfect). Unlike
+    # Recall@k it barely depends on the gallery size, so galleries of different
+    # sizes can be compared.
+    two_way = (gallery_size - ranks) / (gallery_size - 1)
     return {
         "recall@1": float(np.mean(ranks <= 1)),
         "recall@5": float(np.mean(ranks <= 5)),
         "median_rank": float(np.median(ranks)),
+        "two_way": float(np.mean(two_way)),
         "gallery_size": int(gallery_size),
         "chance_recall@1": 1 / gallery_size,
         "chance_recall@5": 5 / gallery_size,
         "chance_median_rank": (gallery_size + 1) / 2,
+        "chance_two_way": 0.5,
     }

@@ -58,7 +58,8 @@ The embedding scripts use PyTorch, Transformers, NumPy, and Pillow. On first use
 | `src/preprocess_fmri.py` | Concatenates the 10 ROI beta files of a subject, builds the trial table from the presentation lists, z-scores each voxel within each session, and checks trial alignment. |
 | `src/models.py` | PyTorch MLP (voxels → 1024 → embedding) trained with either a cosine loss or a symmetric contrastive (InfoNCE) loss. |
 | `src/train.py` | Image-identity train/val/test split, hyperparameter selection on val, refit on train + val, single test evaluation. Models: `ridge`, `mlp` (cosine loss), `mlp_infonce` (contrastive loss). |
-| `src/evaluate.py` | Cosine-similarity retrieval ranks, Recall@1/5, median rank, and chance levels. |
+| `src/evaluate.py` | Cosine-similarity retrieval ranks, Recall@1/5, median rank, 2-way identification, and chance levels. |
+| `src/noise_ceiling.py` | Brain-to-brain identification of repeated images (single-trial signal reference); writes `outputs/noise_ceiling.json`. |
 | `src/summarize_results.py` | Aggregates `outputs/results/*.json` into a mean ± std Markdown table over seeds. |
 
 ## Image embeddings
@@ -164,7 +165,7 @@ Protocol (identical for every model):
    - `mlp`: weight decay ∈ {0.01, 0.1, 1} and number of epochs (checked every 5, up to 60)
    - `mlp_infonce`: temperature τ ∈ {0.01, 0.03, 0.1} and number of epochs (weight decay fixed at 0.1)
 3. **Refit on train + val**, then evaluate **once** on the test images.
-4. **Retrieval:** each test trial is a query; the gallery is the embeddings of the test images (≈ 492 for CSI1–3, 295 for CSI4); candidates are ranked by cosine similarity. Image embeddings are looked up by filename, never by row position.
+4. **Retrieval:** each test trial is a query; the gallery is the embeddings of the test images (≈ 492 for CSI1–3, 295 for CSI4); candidates are ranked by cosine similarity. Image embeddings are looked up by filename, never by row position. Metrics: Recall@1, Recall@5, median rank, and **2-way identification** (the fraction of wrong candidates scored below the correct one; 50 % = chance). 2-way barely depends on gallery size, so it is the metric used to compare galleries of different sizes.
 5. Results are saved to `outputs/results/<model>_<subject>_<embedding>_seed<seed>.json` and reported as mean ± std over seeds 0–4 (each seed is a different split).
 
 ## Results
@@ -210,5 +211,34 @@ Observations:
   - InfoNCE MLP: CLIP mostly selects τ = 0.03, DINOv2 mostly τ = 0.1.
   - **34 of 40 InfoNCE runs select 5 epochs, the earliest checkpoint**, so the best stopping point may be earlier. Checking every epoch (or lowering the learning rate) is a cheap next experiment.
 - Most test queries are single presentations (≈ 4800 of 4916 images are shown once), so these numbers reflect single-trial decoding.
+
+## Brain-to-brain identification (noise-ceiling reference)
+
+```bash
+uv run python src/noise_ceiling.py   # writes outputs/noise_ceiling.json
+```
+
+How identifiable is a single fMRI trial by itself, without any image model? For every image shown several times, one presentation is the query, and the task is to find the same image's other presentation(s) among those of all repeated images, by Pearson correlation of the voxel patterns.
+
+- **single**: each gallery item is one other presentation (noise on both sides).
+- **averaged**: each gallery item is the mean of 3 other presentations (less noise on the gallery side, closer to the decoder, whose targets are noise-free embeddings).
+
+| Subject | Brain-to-brain, single: 2-way (%) | Brain-to-brain, averaged: 2-way (%) | Ridge (CLIP): 2-way (%) | InfoNCE MLP (CLIP): 2-way (%) |
+| --- | --- | --- | --- | --- |
+| CSI1 | 80.6 | 86.9 | 78.9 ± 1.0 | **92.0 ± 0.6** |
+| CSI2 | 64.8 | 71.6 | 73.9 ± 0.4 | **86.7 ± 0.7** |
+| CSI3 | 74.0 | 81.1 | 75.5 ± 1.0 | **88.3 ± 0.9** |
+| CSI4 | 75.9 | (14 images only) | 77.5 ± 1.2 | **88.5 ± 0.7** |
+
+Brain-to-brain uses ≈ 110 repeated images per subject (90 for CSI4). Its Recall@1 / Recall@5 / median rank are in `outputs/noise_ceiling.json`; e.g. CSI1 single: 11.5 % / 29.6 % / 14 of 114. The decoder columns are the 492-image (CSI4: 295) test galleries from the results table, mean ± std over 5 seeds.
+
+Interpretation:
+
+- **Single-trial signal ranks subjects the same way the decoders do**: CSI1 > CSI3 ≈ CSI4 > CSI2. Subject differences reflect data quality, not modelling.
+- **The InfoNCE decoder exceeds the brain-to-brain reference for every subject**, so this measurement is **not** an upper bound on decoding. Two reasons:
+  - Plain correlation weights all voxels equally, while a trained decoder learns to emphasise informative voxels and ignore noisy ones.
+  - The decoder compares a noisy trial to a noise-free target, while brain-to-brain has noise on both sides.
+  - Also, the two are evaluated on different images: the ~110 repeated images vs. random test images.
+- A tighter ceiling would need a noise model, e.g. per-voxel split-half reliability with a Spearman–Brown correction, or a learned brain-to-brain metric.
 
 ## Project Goals and Plans
