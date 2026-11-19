@@ -56,8 +56,8 @@ The embedding scripts use PyTorch, Transformers, NumPy, and Pillow. On first use
 | `src/extract_embeddings.py` | Configurable batched image embedding extraction for CLIP ViT-B/32 and DINOv2-Large. Saves an `.npy` feature matrix and a matching CSV image index. |
 | `src/test_embeddings.py` | Checks saved matrices and mappings against the image directory, validates normalized finite vectors, and re-embeds a seeded random sample to check row alignment. |
 | `src/preprocess_fmri.py` | Concatenates the 10 ROI beta files of a subject, builds the trial table from the presentation lists, z-scores each voxel within each session, and checks trial alignment. |
-| `src/models.py` | PyTorch MLP (voxels → 1024 → embedding) trained with a cosine loss. |
-| `src/train.py` | Image-identity train/val/test split, hyperparameter selection on val, refit on train + val, single test evaluation. Models: `ridge`, `mlp`. |
+| `src/models.py` | PyTorch MLP (voxels → 1024 → embedding) trained with either a cosine loss or a symmetric contrastive (InfoNCE) loss. |
+| `src/train.py` | Image-identity train/val/test split, hyperparameter selection on val, refit on train + val, single test evaluation. Models: `ridge`, `mlp` (cosine loss), `mlp_infonce` (contrastive loss). |
 | `src/evaluate.py` | Cosine-similarity retrieval ranks, Recall@1/5, median rank, and chance levels. |
 | `src/summarize_results.py` | Aggregates `outputs/results/*.json` into a mean ± std Markdown table over seeds. |
 
@@ -152,13 +152,17 @@ Decisions and checks:
 ```bash
 uv run python src/train.py --model ridge --subject CSI1 --embedding clip_vit_b32 --seed 0
 uv run python src/train.py --model mlp   --subject CSI1 --embedding dinov2_large --seed 0
+uv run python src/train.py --model mlp_infonce --subject CSI1 --embedding clip_vit_b32 --seed 0
 uv run python src/summarize_results.py
 ```
 
 Protocol (identical for every model):
 
 1. **Split by image identity, not by trial.** 80 / 10 / 10 % of the unique images go to train / val / test; all presentations of an image stay in the same split, so repeated presentations cannot leak. `ImageNet/n03017168_3695.JPEG` and `ImageNet/n03447721_2079.JPEG` are byte-identical and treated as one image.
-2. **Hyperparameters chosen on val** by median retrieval rank: ridge α ∈ {10, …, 10⁵}; MLP weight decay ∈ {0.01, 0.1, 1} and number of epochs (checked every 5, up to 60).
+2. **Hyperparameters chosen on val** by median retrieval rank:
+   - ridge: α ∈ {10, …, 10⁵}
+   - `mlp`: weight decay ∈ {0.01, 0.1, 1} and number of epochs (checked every 5, up to 60)
+   - `mlp_infonce`: temperature τ ∈ {0.01, 0.03, 0.1} and number of epochs (weight decay fixed at 0.1)
 3. **Refit on train + val**, then evaluate **once** on the test images.
 4. **Retrieval:** each test trial is a query; the gallery is the embeddings of the test images (≈ 492 for CSI1–3, 295 for CSI4); candidates are ranked by cosine similarity. Image embeddings are looked up by filename, never by row position.
 5. Results are saved to `outputs/results/<model>_<subject>_<embedding>_seed<seed>.json` and reported as mean ± std over seeds 0–4 (each seed is a different split).

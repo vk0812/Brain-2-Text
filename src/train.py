@@ -1,6 +1,7 @@
 """Map ROI fMRI betas to image embeddings and evaluate by retrieval.
 
-Models: ridge (linear baseline) and mlp. Both follow the same protocol:
+Models: ridge (linear baseline), mlp (cosine loss) and mlp_infonce (contrastive
+loss). All follow the same protocol:
 choose hyperparameters on validation images, refit on train + val, then
 evaluate once on the test images.
 
@@ -31,6 +32,10 @@ DUPLICATE_IMAGES = {"n03447721_2079.JPEG": "n03017168_3695.JPEG"}
 RIDGE_ALPHAS = [1e1, 1e2, 1e3, 1e4, 1e5]
 MLP_WEIGHT_DECAYS = [1e-2, 1e-1, 1.0]
 MLP_MAX_EPOCHS = 60
+# Weight decay barely mattered for the cosine MLP, so the contrastive MLP fixes it
+# and tunes the temperature instead.
+INFONCE_TEMPERATURES = [0.01, 0.03, 0.1]
+INFONCE_WEIGHT_DECAY = 0.1
 
 
 def split_images(image_ids, test_fraction, val_fraction, seed):
@@ -56,7 +61,7 @@ def evaluate_split(predicted, image_ids, embeddings, row_of):
     return retrieval_metrics(ranks, len(gallery_images))
 
 
-def fit_ridge(X, Y, is_train, is_val, val_score, seed):
+def fit_ridge(X, Y, is_train, is_val, val_score, seed, labels):
     """Pick alpha on val, refit on train + val. Returns (predict function, chosen params)."""
     best_alpha, best_rank = None, np.inf
     for alpha in RIDGE_ALPHAS:
@@ -70,7 +75,7 @@ def fit_ridge(X, Y, is_train, is_val, val_score, seed):
     return model.predict, {"alpha": best_alpha}
 
 
-def fit_mlp(X, Y, is_train, is_val, val_score, seed):
+def fit_mlp(X, Y, is_train, is_val, val_score, seed, labels):
     """Pick weight decay and number of epochs on val, refit on train + val."""
     best = {"weight_decay": None, "epochs": None, "rank": np.inf}
     for weight_decay in MLP_WEIGHT_DECAYS:
@@ -92,7 +97,30 @@ def fit_mlp(X, Y, is_train, is_val, val_score, seed):
             {"weight_decay": best["weight_decay"], "epochs": best["epochs"]})
 
 
-FIT_FUNCTIONS = {"ridge": fit_ridge, "mlp": fit_mlp}
+def fit_mlp_infonce(X, Y, is_train, is_val, val_score, seed, labels):
+    """Contrastive MLP: pick temperature and number of epochs on val, refit on train + val."""
+    best = {"temperature": None, "epochs": None, "rank": np.inf}
+    for temperature in INFONCE_TEMPERATURES:
+        def track(epoch, model):
+            if epoch % 5:
+                return
+            rank = val_score(predict_mlp(model, X[is_val]),
+                             f"tau={temperature:g} epoch={epoch}", verbose=epoch % 20 == 0)
+            if rank < best["rank"]:
+                best.update(temperature=temperature, epochs=epoch, rank=rank)
+
+        train_mlp(X[is_train], Y[is_train], MLP_MAX_EPOCHS, INFONCE_WEIGHT_DECAY, seed,
+                  on_epoch_end=track, loss="infonce", labels=labels[is_train],
+                  temperature=temperature)
+
+    fit_mask = is_train | is_val
+    model = train_mlp(X[fit_mask], Y[fit_mask], best["epochs"], INFONCE_WEIGHT_DECAY, seed,
+                      loss="infonce", labels=labels[fit_mask], temperature=best["temperature"])
+    return (lambda X_new: predict_mlp(model, X_new),
+            {"temperature": best["temperature"], "epochs": best["epochs"]})
+
+
+FIT_FUNCTIONS = {"ridge": fit_ridge, "mlp": fit_mlp, "mlp_infonce": fit_mlp_infonce}
 
 
 def main():
@@ -137,7 +165,11 @@ def main():
                   f"R@5={metrics['recall@5']:.3f}  median rank={metrics['median_rank']:.0f}")
         return metrics["median_rank"]
 
-    predict, params = FIT_FUNCTIONS[args.model](X, Y, is_train, is_val, val_score, args.seed)
+    # One integer per image identity: the contrastive loss uses it to avoid treating
+    # two presentations of the same image as negatives of each other.
+    labels = pd.factorize(image_ids)[0]
+    predict, params = FIT_FUNCTIONS[args.model](X, Y, is_train, is_val, val_score,
+                                                args.seed, labels)
     test = evaluate_split(predict(X[is_test]), image_ids[is_test], embeddings, row_of)
 
     print(f"\nTest ({params}, {test['gallery_size']} candidate images)")
