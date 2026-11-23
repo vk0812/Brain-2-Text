@@ -128,7 +128,7 @@ def main():
     parser.add_argument("--model", default="ridge", choices=list(FIT_FUNCTIONS))
     parser.add_argument("--subject", default="CSI1")
     parser.add_argument("--embedding", default="clip_vit_b32",
-                        choices=["clip_vit_b32", "dinov2_large"])
+                        choices=sorted(path.stem for path in EMBEDDING_DIR.glob("*.npy")))
     parser.add_argument("--test-fraction", type=float, default=0.1)
     parser.add_argument("--val-fraction", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=0)

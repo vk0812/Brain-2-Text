@@ -13,10 +13,12 @@ from transformers import AutoImageProcessor, AutoModel, AutoProcessor, CLIPModel
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-IMAGE_DIR = (
-    PROJECT_ROOT
-    / "data/raw/bold5000/BOLD5000_Stimuli/Scene_Stimuli/Presented_Stimuli"
-)
+# The stimuli archive is extracted either directly under bold5000/ or under bold5000/stimuli/.
+_IMAGE_DIRS = [
+    PROJECT_ROOT / "data/raw/bold5000" / sub / "BOLD5000_Stimuli/Scene_Stimuli/Presented_Stimuli"
+    for sub in ("", "stimuli")
+]
+IMAGE_DIR = next((path for path in _IMAGE_DIRS if path.is_dir()), _IMAGE_DIRS[0])
 OUTPUT_DIR = PROJECT_ROOT / "data/processed/embeddings"
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
@@ -33,7 +35,61 @@ MODEL_CONFIGS = {
         "output_stem": "dinov2_large",
         "architecture": "dinov2",
     },
+    "clip_vit_l14": {
+        "model_id": "openai/clip-vit-large-patch14",
+        "output_stem": "clip_vit_l14",
+        "architecture": "clip",
+    },
+    # CLIP's own ResNet-50 image tower: same training objective as the CLIP ViTs,
+    # same backbone family as the ImageNet ResNet-50 below.
+    "clip_rn50": {
+        "model_id": "RN50",
+        "pretrained": "openai",
+        "output_stem": "clip_rn50",
+        "architecture": "open_clip",
+    },
+    # ImageNet-supervised CNNs from torchvision; "feature" names the layer we keep.
+    "resnet50": {
+        "model_id": "resnet50",
+        "weights": "ResNet50_Weights.IMAGENET1K_V1",
+        "feature": "avgpool",
+        "output_stem": "resnet50",
+        "architecture": "torchvision",
+    },
+    "convnext_base": {
+        "model_id": "convnext_base",
+        "weights": "ConvNeXt_Base_Weights.IMAGENET1K_V1",
+        "feature": "avgpool + layernorm",
+        "output_stem": "convnext_base",
+        "architecture": "torchvision",
+    },
+    "alexnet_fc7": {
+        "model_id": "alexnet",
+        "weights": "AlexNet_Weights.IMAGENET1K_V1",
+        "feature": "fc7 (after ReLU)",
+        "output_stem": "alexnet_fc7",
+        "architecture": "torchvision",
+    },
 }
+
+
+def _load_torchvision(config):
+    """Load a torchvision classifier with its head cut off at the configured layer."""
+    import torchvision.models as tv_models
+
+    enum_name, member = config["weights"].split(".")
+    weights = getattr(getattr(tv_models, enum_name), member)
+    model = getattr(tv_models, config["model_id"])(weights=weights)
+    name = config["model_id"]
+    if name == "resnet50":
+        model.fc = torch.nn.Identity()  # 2048-d global-average-pooled features
+    elif name == "convnext_base":
+        model.classifier = model.classifier[:2]  # LayerNorm2d + Flatten -> 1024-d
+    elif name == "alexnet":
+        model.classifier = model.classifier[:6]  # up to fc7 + ReLU -> 4096-d
+    else:
+        raise ValueError(f"No feature layer defined for torchvision model {name!r}")
+    return weights.transforms(), model
 
 
 def get_device():
@@ -62,6 +118,14 @@ def load_encoder(model_key, device):
     if config["architecture"] == "clip":
         processor = AutoProcessor.from_pretrained(model_id)
         model = CLIPModel.from_pretrained(model_id)
+    elif config["architecture"] == "open_clip":
+        import open_clip
+
+        model, _, processor = open_clip.create_model_and_transforms(
+            model_id, pretrained=config["pretrained"]
+        )
+    elif config["architecture"] == "torchvision":
+        processor, model = _load_torchvision(config)
     else:
         processor = AutoImageProcessor.from_pretrained(model_id)
         model = AutoModel.from_pretrained(model_id)
@@ -71,11 +135,20 @@ def load_encoder(model_key, device):
 
 def encode_images(images, processor, model, model_key, device):
     """Encode RGB PIL images and return unit-normalized feature vectors."""
-    inputs = processor(images=images, return_tensors="pt")
-    pixel_values = inputs["pixel_values"].to(device)
+    architecture = MODEL_CONFIGS[model_key]["architecture"]
+    if architecture in ("open_clip", "torchvision"):
+        # These preprocessors are plain per-image transforms (PIL -> tensor).
+        pixel_values = torch.stack([processor(image) for image in images]).to(device)
+    else:
+        inputs = processor(images=images, return_tensors="pt")
+        pixel_values = inputs["pixel_values"].to(device)
 
     with torch.inference_mode():
-        if MODEL_CONFIGS[model_key]["architecture"] == "clip":
+        if architecture == "open_clip":
+            features = model.encode_image(pixel_values)
+        elif architecture == "torchvision":
+            features = model(pixel_values)
+        elif architecture == "clip":
             vision_output = model.vision_model(pixel_values=pixel_values)
             features = model.visual_projection(vision_output.pooler_output)
         else:
@@ -179,7 +252,7 @@ def extract_model(
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Extract image embeddings using CLIP, DINOv2, or both."
+        description="Extract image embeddings with one or all configured encoders."
     )
     parser.add_argument(
         "--model",
